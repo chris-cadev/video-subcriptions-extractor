@@ -162,5 +162,5 @@ cython_debug/
 #.idea/
 
 cache
-client_secret*
+/*.json
 solr-data
