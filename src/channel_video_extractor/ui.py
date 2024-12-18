@@ -41,18 +41,27 @@ class SolrRepository:
             raise RuntimeError("Solr is not configured.")
 
         try:
-            # Default to '*' if no fields are provided
             field_list = ",".join(fields) if fields else "*"
             solr_query = f"title:{query}"  # Adjust to match your searchable field
-            logger.info("Executing Solr query: %s with fields: %s", solr_query, field_list)
-
-            # Execute Solr search
             results = self.solr.search(solr_query, fl=field_list, start=start, rows=RESULTS_PER_PAGE)
-            logger.info("Solr returned %d results.", len(results))
             return [doc for doc in results]
         except Exception as e:
             logger.error("Error searching Solr: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Solr search failed.")
+
+    def get_total_results(self, query: str) -> int:
+        """Returns the total number of results for the query."""
+        if not self.solr:
+            raise RuntimeError("Solr is not configured.")
+
+        try:
+            solr_query = f"title:{query}"
+            results = self.solr.search(solr_query, rows=0)  # rows=0 to fetch only the count
+            return results.hits
+        except Exception as e:
+            logger.error("Error fetching total results from Solr: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail="Solr total results count failed.")
+
 
 class JsonRepository:
     def __init__(self, filename):
@@ -69,11 +78,23 @@ class JsonRepository:
             ]
 
             # Pagination
-            paginated_results = results[start: start + RESULTS_PER_PAGE]
-            return paginated_results
+            return results[start: start + RESULTS_PER_PAGE]
         except Exception as e:
             logger.error("Error searching JSON file: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="JSON search failed.")
+
+    def get_total_results(self, query: str) -> int:
+        """Returns the total number of results for the query."""
+        try:
+            with open(self.filename, "r") as f:
+                data = json.load(f)
+
+            results = [item for item in data if query.lower() in json.dumps(item).lower()]
+            return len(results)
+        except Exception as e:
+            logger.error("Error counting total results in JSON file: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail="JSON total results count failed.")
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -103,15 +124,24 @@ def search(
     if source == "solr":
         if not SOLR_URL:
             raise HTTPException(status_code=500, detail="Solr is not configured.")
-
         repository = SolrRepository(SOLR_URL)
     elif source == "json":
         if not os.path.exists(JSON_FILE_PATH):
             raise HTTPException(status_code=500, detail="JSON file is not available.")
-
         repository = JsonRepository(JSON_FILE_PATH)
     else:
         raise HTTPException(status_code=400, detail="Invalid source. Use 'solr' or 'json'.")
 
+    # Get search results and total results count
     results = repository.search(query, fields, start=start)
-    return {"results": results, "page": page}
+    total_results = repository.get_total_results(query)  # Implement this in repositories
+    total_pages = (total_results // RESULTS_PER_PAGE) + (1 if total_results % RESULTS_PER_PAGE > 0 else 0)
+
+    return {
+        "results": results,
+        "page": page,
+        "total_pages": total_pages,
+        "total_results": total_results
+    }
+
+

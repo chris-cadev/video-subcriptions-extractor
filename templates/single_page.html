@@ -7,11 +7,12 @@
     <link rel="stylesheet" href="/static/styles.css">
     <script>
         let currentPage = 1;
-
+        let totalPages = 1; // Initialize with default value
+    
         function setupListeners() {
             const queryInput = document.getElementById("query");
             const sourceSelect = document.getElementById("source");
-
+    
             // Add event listener for Enter key
             queryInput.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
@@ -20,13 +21,13 @@
                     performSearch();
                 }
             });
-
+    
             // Add event listener for source change
             sourceSelect.addEventListener("change", () => {
                 currentPage = 1; // Reset to first page on source change
                 performSearch();
             });
-
+    
             // Add pagination controls
             document.getElementById("prev").addEventListener("click", () => {
                 if (currentPage > 1) {
@@ -34,40 +35,59 @@
                     performSearch();
                 }
             });
-
+    
             document.getElementById("next").addEventListener("click", () => {
-                currentPage++;
-                performSearch();
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    performSearch();
+                }
             });
         }
-
+    
         async function performSearch() {
             const query = document.getElementById("query").value;
             const source = document.getElementById("source").value;
-
+    
             if (query.trim() === "") {
                 document.getElementById("results").innerHTML = "<p>Please enter a search query.</p>";
                 return;
             }
-
+    
             try {
                 const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&source=${source}&page=${currentPage}`);
                 const data = await response.json();
-
+    
                 if (data.results.length > 0) {
                     document.getElementById("results").innerHTML = createResultsHTML(data.results);
+    
+                    // Assume API returns total_pages in the response for production readiness
+                    if (data.total_pages) {
+                        totalPages = data.total_pages;
+                    }
+    
+                    // Update pagination controls
+                    updatePaginationControls();
+                    document.getElementById("page-indicator").textContent = `Page ${currentPage} of ${totalPages}`;
                 } else {
                     document.getElementById("results").innerHTML = "<p>No results found.</p>";
+                    totalPages = currentPage; // Set totalPages to currentPage if no more results
+                    updatePaginationControls();
                 }
-
-                // Update pagination controls
-                document.getElementById("page-indicator").textContent = `Page ${currentPage}`;
             } catch (error) {
                 console.error("Error fetching search results:", error);
                 document.getElementById("results").innerHTML = "<p>Something went wrong. Please try again later.</p>";
             }
         }
-
+    
+        function updatePaginationControls() {
+            const prevButton = document.getElementById("prev");
+            const nextButton = document.getElementById("next");
+    
+            // Enable or disable buttons based on current page
+            prevButton.disabled = currentPage <= 1;
+            nextButton.disabled = currentPage >= totalPages;
+        }
+    
         function createResultsHTML(results) {
             return `
                 <div class="results-container">
@@ -83,9 +103,10 @@
                 </div>
             `;
         }
-
+    
         window.onload = setupListeners;
     </script>
+    
     <style>
         body {
             font-family: Arial, sans-serif;
