@@ -2,7 +2,7 @@
 authors = [
   {name = "Christian Camacho", email = "chris.ca.dev@gmail.com"},
 ]
-dependencies = ["yt-dlp>=2024.12.13", "click>=8.1.7"]
+dependencies = ["yt-dlp>=2024.12.13", "click>=8.1.7", "pysolr>=3.10.0", "google-auth-oauthlib>=1.2.1", "google-api-python-client>=2.155.0", "python-dotenv>=1.0.1"]
 description = "Default template for PDM package"
 license = {text = "MIT"}
 name = "channel-video-extractor"
