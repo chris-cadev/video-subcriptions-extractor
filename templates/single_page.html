@@ -6,7 +6,7 @@
     <title>Search App</title>
     <link rel="stylesheet" href="/static/styles.css">
     <script>
-        let debounceTimeout;
+        let currentPage = 1;
 
         function setupListeners() {
             const queryInput = document.getElementById("query");
@@ -16,20 +16,29 @@
             queryInput.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
                     event.preventDefault();
+                    currentPage = 1; // Reset to first page on new search
                     performSearch();
                 }
             });
 
-            // Add event listener for typing (debounce)
-            queryInput.addEventListener("input", () => {
-                clearTimeout(debounceTimeout);
-                debounceTimeout = setTimeout(() => {
-                    performSearch();
-                }, 2000);
+            // Add event listener for source change
+            sourceSelect.addEventListener("change", () => {
+                currentPage = 1; // Reset to first page on source change
+                performSearch();
             });
 
-            // Add event listener for source change
-            sourceSelect.addEventListener("change", performSearch);
+            // Add pagination controls
+            document.getElementById("prev").addEventListener("click", () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    performSearch();
+                }
+            });
+
+            document.getElementById("next").addEventListener("click", () => {
+                currentPage++;
+                performSearch();
+            });
         }
 
         async function performSearch() {
@@ -42,7 +51,7 @@
             }
 
             try {
-                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&source=${source}`);
+                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&source=${source}&page=${currentPage}`);
                 const data = await response.json();
 
                 if (data.results.length > 0) {
@@ -50,6 +59,9 @@
                 } else {
                     document.getElementById("results").innerHTML = "<p>No results found.</p>";
                 }
+
+                // Update pagination controls
+                document.getElementById("page-indicator").textContent = `Page ${currentPage}`;
             } catch (error) {
                 console.error("Error fetching search results:", error);
                 document.getElementById("results").innerHTML = "<p>Something went wrong. Please try again later.</p>";
@@ -60,11 +72,12 @@
             return `
                 <div class="results-container">
                     ${results.map(result => `
-                        <div class="result-card">
-                            <h3>${result.title || "No Title"}</h3>
-                            <p><strong>Description:</strong> ${result.description || "No Description"}</p>
-                            <p><strong>ID:</strong> ${result.id || "N/A"}</p>
-                            ${result.url ? `<a href="${result.url}" target="_blank">View More</a>` : ""}
+                        <div class="result-item">
+                            <a href="${result.url || '#'}" target="_blank" class="result-title">
+                                ${result.title || "No Title"}
+                            </a>
+                            <div class="result-url">${result.url || "No URL available"}</div>
+                            <p class="result-snippet">${result.description || "No description available."}</p>
                         </div>
                     `).join("")}
                 </div>
@@ -73,6 +86,89 @@
 
         window.onload = setupListeners;
     </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: #6200ea;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        main {
+            padding: 2rem;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        .search-bar {
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .search-bar input, .search-bar select {
+            padding: 0.5rem;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        .results-container {
+            margin-top: 1rem;
+        }
+
+        .result-item {
+            margin-bottom: 1.5rem;
+        }
+
+        .result-title {
+            font-size: 1.2rem;
+            color: #1a0dab;
+            text-decoration: none;
+        }
+
+        .result-title:hover {
+            text-decoration: underline;
+        }
+
+        .result-url {
+            font-size: 0.9rem;
+            color: #006621;
+        }
+
+        .result-snippet {
+            font-size: 1rem;
+            color: #545454;
+        }
+
+        .pagination {
+            margin-top: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .pagination button {
+            padding: 0.5rem 1rem;
+            font-size: 1rem;
+            background-color: #6200ea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .pagination button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -80,10 +176,7 @@
     </header>
     <main>
         <div class="search-bar">
-            <label for="query">Search Query:</label>
-            <input type="text" id="query" placeholder="Start typing or press Enter to search..." />
-
-            <label for="source">Source:</label>
+            <input type="text" id="query" placeholder="Type your query and press Enter" />
             <select id="source">
                 <option value="json">JSON</option>
                 <option value="solr">Solr</option>
@@ -91,6 +184,11 @@
         </div>
         <div id="results">
             <p>Search results will appear here...</p>
+        </div>
+        <div class="pagination">
+            <button id="prev" disabled>Previous</button>
+            <span id="page-indicator">Page 1</span>
+            <button id="next">Next</button>
         </div>
     </main>
 </body>

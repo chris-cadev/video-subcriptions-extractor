@@ -23,6 +23,7 @@ logger = logging.getLogger("SearchAppLogger")
 # Constants
 SOLR_URL = os.getenv("SOLR_URL")
 JSON_FILE_PATH = os.getenv("JSON_FILE_PATH", "data.json")
+RESULTS_PER_PAGE = 10
 
 # FastAPI app
 app = FastAPI()
@@ -35,7 +36,7 @@ class SolrRepository:
     def __init__(self, solr_url):
         self.solr = pysolr.Solr(solr_url, always_commit=True) if solr_url else None
 
-    def search(self, query: str, fields: Optional[List[str]] = None):
+    def search(self, query: str, fields: Optional[List[str]] = None, start: int = 0):
         if not self.solr:
             raise RuntimeError("Solr is not configured.")
 
@@ -46,19 +47,18 @@ class SolrRepository:
             logger.info("Executing Solr query: %s with fields: %s", solr_query, field_list)
 
             # Execute Solr search
-            results = self.solr.search(solr_query, fl=field_list)
+            results = self.solr.search(solr_query, fl=field_list, start=start, rows=RESULTS_PER_PAGE)
             logger.info("Solr returned %d results.", len(results))
             return [doc for doc in results]
         except Exception as e:
             logger.error("Error searching Solr: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Solr search failed.")
 
-
 class JsonRepository:
     def __init__(self, filename):
         self.filename = filename
 
-    def search(self, query: str, fields: Optional[List[str]] = None):
+    def search(self, query: str, fields: Optional[List[str]] = None, start: int = 0):
         try:
             with open(self.filename, "r") as f:
                 data = json.load(f)
@@ -67,7 +67,10 @@ class JsonRepository:
                 {field: item[field] for field in fields} if fields else item
                 for item in data if query.lower() in json.dumps(item).lower()
             ]
-            return results
+
+            # Pagination
+            paginated_results = results[start: start + RESULTS_PER_PAGE]
+            return paginated_results
         except Exception as e:
             logger.error("Error searching JSON file: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="JSON search failed.")
@@ -83,7 +86,8 @@ def home(request: Request):
 def search(
     query: str = Query(..., description="Search query"),
     source: str = Query("json", description="Data source: 'solr' or 'json'"),
-    fields: Optional[List[str]] = Query(None, description="Fields to include in results")
+    fields: Optional[List[str]] = Query(None, description="Fields to include in results"),
+    page: int = Query(1, description="Page number for pagination")
 ):
     """
     API endpoint to query data from Solr or JSON file.
@@ -92,7 +96,10 @@ def search(
     - `query`: The search query.
     - `source`: Data source ('solr' or 'json').
     - `fields`: Optional list of fields to include in the response.
+    - `page`: Page number for pagination.
     """
+    start = (page - 1) * RESULTS_PER_PAGE
+
     if source == "solr":
         if not SOLR_URL:
             raise HTTPException(status_code=500, detail="Solr is not configured.")
@@ -106,5 +113,5 @@ def search(
     else:
         raise HTTPException(status_code=400, detail="Invalid source. Use 'solr' or 'json'.")
 
-    results = repository.search(query, fields)
-    return {"results": results}
+    results = repository.search(query, fields, start=start)
+    return {"results": results, "page": page}
