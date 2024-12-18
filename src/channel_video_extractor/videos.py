@@ -144,6 +144,10 @@ def authenticate_youtube():
     return googleapiclient.discovery.build("youtube", "v3", credentials=credentials), \
            googleapiclient.discovery.build("oauth2", "v2", credentials=credentials)
 
+def sanitize_solr_query(value):
+    # Escape Solr special characters if necessary
+    return f'"{value}"' if value.startswith('-') else value
+
 # Extract subscriptions
 def extract_subscriptions(youtube_api, oauth2_api, repository):
     try:
@@ -196,6 +200,26 @@ def extract_subscriptions(youtube_api, oauth2_api, repository):
     except HttpError as e:
         logger.error("YouTube API error: %s", e, exc_info=True)
 
+def normalize_thumbnails(thumbnails):
+    if isinstance(thumbnails, list):
+        # Extract only the first thumbnail URL or other required fields
+        return [thumb.get('url') for thumb in thumbnails if 'url' in thumb]
+    return []
+
+def generate_view_object(entry: dict):
+    return {
+        "id": sanitize_solr_query(entry.get("id")),
+        "url": entry.get("url"),
+        "title": entry.get("title"),
+        "description": entry.get("description"),
+        "view_count": entry.get("view_count"),
+        "duration": entry.get("duration"),
+        "thumbnails": normalize_thumbnails(entry.get("thumbnails")),
+        "release_timestamp": entry.get("release_timestamp"),
+        "channel_is_verified": entry.get("channel_is_verified"),
+        "live_status": entry.get("live_status"),
+    }
+
 # Extract video metadata
 def extract_videos(channel_url):
     try:
@@ -210,19 +234,11 @@ def extract_videos(channel_url):
 
         videos = []
         for entry in info_dict.get('entries', []):
+            if entry.get('_type') == 'playlist':
+                for playlist_enty in entry.get('entries',[]):
+                    videos.append(generate_view_object(playlist_enty))
             if entry.get('_type') == 'url':
-                videos.append({
-                    "id": entry.get("id"),
-                    "url": entry.get("url"),
-                    "title": entry.get("title"),
-                    "description": entry.get("description"),
-                    "view_count": entry.get("view_count"),
-                    "duration": entry.get("duration"),
-                    "thumbnails": entry.get("thumbnails"),
-                    "release_timestamp": entry.get("release_timestamp"),
-                    "channel_is_verified": entry.get("channel_is_verified"),
-                    "live_status": entry.get("live_status"),
-                })
+                videos.append(generate_view_object(entry))
         logger.info("Extracted %d videos for channel: %s", len(videos), channel_url)
         return videos
 
