@@ -17,8 +17,11 @@ import socket
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+)
+logger = logging.getLogger("YouTubeSubscriptionLogger")
 
 # Constants
 SCOPES = [
@@ -42,11 +45,11 @@ class SolrRepository:
         if self.solr:
             try:
                 self.solr.add(data)
-                logger.info("Data saved to Solr")
+                logger.info("Data successfully saved to Solr.")
             except Exception as e:
-                logger.error("Failed to save data to Solr: %s", e)
+                logger.error("Failed to save data to Solr: %s", e, exc_info=True)
         else:
-            logger.error("Solr URL not configured")
+            logger.error("Solr URL is not configured. Cannot save data.")
 
 
 class JsonRepository:
@@ -64,9 +67,9 @@ class JsonRepository:
             existing_data.extend(data)
             with open(self.filename, "w") as f:
                 json.dump(existing_data, f, indent=2)
-            logger.info("Data appended to %s", self.filename)
+            logger.info("Data successfully appended to %s.", self.filename)
         except Exception as e:
-            logger.error("Failed to append data to JSON: %s", e)
+            logger.error("Failed to append data to JSON file: %s", e, exc_info=True)
 
 # Caching functions
 def get_cache_file_path(identifier):
@@ -79,51 +82,64 @@ def load_from_cache(identifier):
         with open(cache_file, "rb") as f:
             cached_time, data = pickle.load(f)
             if time.time() - cached_time < CACHE_EXPIRATION_SECONDS:
-                logger.info("Using cached data for %s", identifier)
+                logger.info("Using cached data for %s.", identifier)
                 return data
             else:
-                logger.info("Cache expired for %s", identifier)
+                logger.info("Cache expired for %s. Fetching new data.", identifier)
     return None
 
 def save_to_cache(identifier, data):
     cache_file = get_cache_file_path(identifier)
     with open(cache_file, "wb") as f:
         pickle.dump((time.time(), data), f)
+    logger.info("Data cached for %s.", identifier)
 
 # YouTube API authentication
 def authenticate_youtube():
     client_secrets_file = os.getenv("GOOGLE_CREDENTIALS_FILE")
+    if not client_secrets_file:
+        logger.critical("Google credentials file is not specified in the environment variables.")
+        raise RuntimeError("Missing Google credentials file.")
+
+    logger.info("Starting YouTube API authentication process.")
     flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
         client_secrets_file, SCOPES
     )
 
-    # Try binding to an available port
     port = DEFAULT_PORT
     while True:
         try:
+            logger.info("Attempting to bind to port %d for authentication.", port)
             credentials = flow.run_local_server(port=port)
             break
         except OSError as e:
             if e.errno == 98:  # Address already in use
-                logger.warning("Port %d is in use, trying next port", port)
+                logger.warning("Port %d is in use. Trying next port.", port)
                 port += 1
                 if port > DEFAULT_PORT + 10:
-                    raise RuntimeError("Unable to find an available port")
+                    logger.critical("Unable to find an available port for authentication.")
+                    raise RuntimeError("Unable to find an available port.")
             else:
+                logger.error("Unexpected error during port binding: %s", e, exc_info=True)
                 raise
 
+    logger.info("Authentication successful.")
     return googleapiclient.discovery.build("youtube", "v3", credentials=credentials), \
            googleapiclient.discovery.build("oauth2", "v2", credentials=credentials)
 
 # Extract subscriptions
 def extract_subscriptions(youtube_api, oauth2_api, repository):
     try:
-        logger.info("Extracting subscriptions...")
+        logger.info("Starting subscription extraction.")
         user_info = oauth2_api.userinfo().get().execute()
-        user_email = user_info["email"]
+        user_email = user_info.get("email", "unknown")
+        logger.info("Authenticated user email: %s", user_email)
 
         next_page_token = None
+        subscription_count = 0
+
         while True:
+            logger.info("Fetching subscription list with page token: %s", next_page_token)
             request = youtube_api.subscriptions().list(
                 part="snippet",
                 mine=True,
@@ -131,7 +147,10 @@ def extract_subscriptions(youtube_api, oauth2_api, repository):
                 pageToken=next_page_token
             )
             response = request.execute()
+
             subscriptions = response.get("items", [])
+            logger.info("Fetched %d subscriptions in this batch.", len(subscriptions))
+
             next_page_token = response.get("nextPageToken")
 
             for sub in subscriptions:
@@ -139,7 +158,7 @@ def extract_subscriptions(youtube_api, oauth2_api, repository):
                 channel_title = sub["snippet"]["title"]
                 channel_url = f"https://www.youtube.com/channel/{channel_id}"
 
-                logger.info("Extracting videos for channel: %s", channel_title)
+                logger.info("Extracting videos for channel: %s (%s)", channel_title, channel_id)
                 videos = extract_videos(channel_url)
 
                 for video in videos:
@@ -150,18 +169,24 @@ def extract_subscriptions(youtube_api, oauth2_api, repository):
                     })
                 repository.save(videos)
 
+            subscription_count += len(subscriptions)
+
             if not next_page_token:
                 break
 
+        logger.info("Total subscriptions processed: %d", subscription_count)
+
     except HttpError as e:
-        logger.error("YouTube API error: %s", e)
-        return None
+        logger.error("YouTube API error: %s", e, exc_info=True)
 
 # Extract video metadata
 def extract_videos(channel_url):
     try:
+        logger.info("Checking cache for channel URL: %s", channel_url)
         info_dict = load_from_cache(channel_url)
+
         if not info_dict:
+            logger.info("Fetching video data from YouTube for channel: %s", channel_url)
             with yt_dlp.YoutubeDL({"extract_flat": True, "quiet": True}) as ydl:
                 info_dict = ydl.extract_info(channel_url, download=False)
                 save_to_cache(channel_url, info_dict)
@@ -177,9 +202,11 @@ def extract_videos(channel_url):
                     "view_count": entry.get("view_count"),
                     "duration": entry.get("duration"),
                 })
+        logger.info("Extracted %d videos for channel: %s", len(videos), channel_url)
         return videos
+
     except Exception as e:
-        logger.error("Error extracting videos for %s: %s", channel_url, e)
+        logger.error("Error extracting videos for %s: %s", channel_url, e, exc_info=True)
         return []
 
 @click.command()
@@ -187,20 +214,24 @@ def extract_videos(channel_url):
 @click.option("--solr", is_flag=True, help="Save data to Solr database.")
 def cli(output, solr):
     try:
+        logger.info("Starting CLI with parameters: output=%s, solr=%s", output, solr)
         youtube_api, oauth2_api = authenticate_youtube()
-        repository = None
 
+        repository = None
         if solr:
+            logger.info("Using Solr repository.")
             repository = SolrRepository(SOLR_URL)
         elif output:
+            logger.info("Using JSON repository with file path: %s", output)
             repository = JsonRepository(output)
         else:
             logger.error("Either --output or --solr must be specified.")
             return
 
         extract_subscriptions(youtube_api, oauth2_api, repository)
+        logger.info("CLI execution completed successfully.")
     except Exception as e:
-        logger.error("An unexpected error occurred: %s", e)
+        logger.error("An unexpected error occurred: %s", e, exc_info=True)
 
 if __name__ == "__main__":
     cli()
