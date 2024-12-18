@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,11 +9,11 @@
     <script>
         let currentPage = 1;
         let totalPages = 1; // Initialize with default value
-    
+
         function setupListeners() {
             const queryInput = document.getElementById("query");
             const sourceSelect = document.getElementById("source");
-    
+
             // Add event listener for Enter key
             queryInput.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
@@ -21,13 +22,13 @@
                     performSearch();
                 }
             });
-    
+
             // Add event listener for source change
             sourceSelect.addEventListener("change", () => {
                 currentPage = 1; // Reset to first page on source change
                 performSearch();
             });
-    
+
             // Add pagination controls
             document.getElementById("prev").addEventListener("click", () => {
                 if (currentPage > 1) {
@@ -35,7 +36,7 @@
                     performSearch();
                 }
             });
-    
+
             document.getElementById("next").addEventListener("click", () => {
                 if (currentPage < totalPages) {
                     currentPage++;
@@ -43,28 +44,28 @@
                 }
             });
         }
-    
+
         async function performSearch() {
             const query = document.getElementById("query").value;
             const source = document.getElementById("source").value;
-    
+
             if (query.trim() === "") {
                 document.getElementById("results").innerHTML = "<p>Please enter a search query.</p>";
                 return;
             }
-    
+
             try {
                 const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&source=${source}&page=${currentPage}`);
                 const data = await response.json();
-    
+
                 if (data.results.length > 0) {
                     document.getElementById("results").innerHTML = createResultsHTML(data.results);
-    
+
                     // Assume API returns total_pages in the response for production readiness
                     if (data.total_pages) {
                         totalPages = data.total_pages;
                     }
-    
+
                     // Update pagination controls
                     updatePaginationControls();
                     document.getElementById("page-indicator").textContent = `Page ${currentPage} of ${totalPages}`;
@@ -78,23 +79,23 @@
                 document.getElementById("results").innerHTML = "<p>Something went wrong. Please try again later.</p>";
             }
         }
-    
+
         function updatePaginationControls() {
             const prevButton = document.getElementById("prev");
             const nextButton = document.getElementById("next");
-    
+
             // Enable or disable buttons based on current page
             prevButton.disabled = currentPage <= 1;
             nextButton.disabled = currentPage >= totalPages;
         }
-    
+
         function createResultsHTML(results) {
             return `
                 <div class="results-container">
                     ${results.map(result => `
                         <div class="result-item">
                             <a href="${result.url || '#'}" target="_blank" class="result-title">
-                                ${result.title || "No Title"}
+                                ${[result.channelTitle, result.title || "No Title"].filter(Boolean).join(' - ')}
                             </a>
                             <div class="result-url">${result.url || "No URL available"}</div>
                             <p class="result-snippet">${result.description || "No description available."}</p>
@@ -103,10 +104,10 @@
                 </div>
             `;
         }
-    
+
         window.onload = setupListeners;
     </script>
-    
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -115,10 +116,14 @@
         }
 
         header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
             background-color: #6200ea;
             color: white;
             padding: 1rem;
             text-align: center;
+            padding-bottom: 0;
         }
 
         main {
@@ -128,12 +133,21 @@
         }
 
         .search-bar {
+            background: #f9f9f9;
+            padding: 1rem;
+            box-sizing: border-box;
+            border-radius: 1rem 1rem 0 0;
             margin-bottom: 1rem;
             display: flex;
             gap: 0.5rem;
         }
 
-        .search-bar input, .search-bar select {
+        .search-bar>* {
+            box-shadow: rgba(0, 0, 0, 0.16) 0px 1px 4px;
+        }
+
+        .search-bar input,
+        .search-bar select {
             padding: 0.5rem;
             font-size: 1rem;
             width: 100%;
@@ -191,11 +205,10 @@
         }
     </style>
 </head>
+
 <body>
     <header>
         <h1>Search App</h1>
-    </header>
-    <main>
         <div class="search-bar">
             <input type="text" id="query" placeholder="Type your query and press Enter" />
             <select id="source">
@@ -203,6 +216,8 @@
                 <option value="solr">Solr</option>
             </select>
         </div>
+    </header>
+    <main>
         <div id="results">
             <p>Search results will appear here...</p>
         </div>
@@ -213,4 +228,5 @@
         </div>
     </main>
 </body>
+
 </html>
