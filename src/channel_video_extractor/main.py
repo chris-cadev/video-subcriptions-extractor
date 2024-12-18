@@ -34,8 +34,39 @@ DEFAULT_PORT = 8080
 # Ensure cache folder exists
 os.makedirs(CACHE_FOLDER, exist_ok=True)
 
-# Solr client
-solr = pysolr.Solr(SOLR_URL, always_commit=True) if SOLR_URL else None
+class SolrRepository:
+    def __init__(self, solr_url):
+        self.solr = pysolr.Solr(solr_url, always_commit=True) if solr_url else None
+
+    def save(self, data):
+        if self.solr:
+            try:
+                self.solr.add(data)
+                logger.info("Data saved to Solr")
+            except Exception as e:
+                logger.error("Failed to save data to Solr: %s", e)
+        else:
+            logger.error("Solr URL not configured")
+
+
+class JsonRepository:
+    def __init__(self, filename):
+        self.filename = filename
+
+    def save(self, data):
+        try:
+            if os.path.exists(self.filename):
+                with open(self.filename, "r") as f:
+                    existing_data = json.load(f)
+            else:
+                existing_data = []
+
+            existing_data.extend(data)
+            with open(self.filename, "w") as f:
+                json.dump(existing_data, f, indent=2)
+            logger.info("Data appended to %s", self.filename)
+        except Exception as e:
+            logger.error("Failed to append data to JSON: %s", e)
 
 # Caching functions
 def get_cache_file_path(identifier):
@@ -85,13 +116,12 @@ def authenticate_youtube():
            googleapiclient.discovery.build("oauth2", "v2", credentials=credentials)
 
 # Extract subscriptions
-def extract_subscriptions(youtube_api, oauth2_api):
+def extract_subscriptions(youtube_api, oauth2_api, repository):
     try:
         logger.info("Extracting subscriptions...")
         user_info = oauth2_api.userinfo().get().execute()
         user_email = user_info["email"]
 
-        subscriptions = []
         next_page_token = None
         while True:
             request = youtube_api.subscriptions().list(
@@ -101,16 +131,31 @@ def extract_subscriptions(youtube_api, oauth2_api):
                 pageToken=next_page_token
             )
             response = request.execute()
-            subscriptions.extend(response.get("items", []))
+            subscriptions = response.get("items", [])
             next_page_token = response.get("nextPageToken")
+
+            for sub in subscriptions:
+                channel_id = sub["snippet"]["resourceId"]["channelId"]
+                channel_title = sub["snippet"]["title"]
+                channel_url = f"https://www.youtube.com/channel/{channel_id}"
+
+                logger.info("Extracting videos for channel: %s", channel_title)
+                videos = extract_videos(channel_url)
+
+                for video in videos:
+                    video.update({
+                        "channelId": channel_id,
+                        "channelTitle": channel_title,
+                        "userEmail": user_email
+                    })
+                repository.save(videos)
+
             if not next_page_token:
                 break
 
-        logger.info("Found %d subscriptions", len(subscriptions))
-        return user_email, subscriptions
     except HttpError as e:
         logger.error("YouTube API error: %s", e)
-        return None, []
+        return None
 
 # Extract video metadata
 def extract_videos(channel_url):
@@ -137,60 +182,23 @@ def extract_videos(channel_url):
         logger.error("Error extracting videos for %s: %s", channel_url, e)
         return []
 
-# Save to JSON
-def save_to_json(data, filename):
-    try:
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=2)
-        logger.info("Data saved to %s", filename)
-    except Exception as e:
-        logger.error("Failed to save data to JSON: %s", e)
-
-# Save to Solr
-def save_to_solr(data):
-    if solr:
-        try:
-            solr.add(data)
-            logger.info("Data saved to Solr")
-        except Exception as e:
-            logger.error("Failed to save data to Solr: %s", e)
-    else:
-        logger.error("Solr URL not configured")
-
 @click.command()
 @click.option("--output", type=click.Path(), help="File path to save the data as JSON.")
 @click.option("--solr", is_flag=True, help="Save data to Solr database.")
 def cli(output, solr):
     try:
         youtube_api, oauth2_api = authenticate_youtube()
-        user_email, subscriptions = extract_subscriptions(youtube_api, oauth2_api)
-
-        if not subscriptions:
-            logger.warning("No subscriptions found or failed to fetch data.")
-            return
-
-        all_data = []
-        for sub in subscriptions:
-            channel_id = sub["snippet"]["resourceId"]["channelId"]
-            channel_title = sub["snippet"]["title"]
-            channel_url = f"https://www.youtube.com/channel/{channel_id}"
-
-            logger.info("Extracting videos for channel: %s", channel_title)
-            videos = extract_videos(channel_url)
-            for video in videos:
-                video.update({
-                    "channelId": channel_id,
-                    "channelTitle": channel_title,
-                    "userEmail": user_email
-                })
-            all_data.extend(videos)
-
-        if output:
-            save_to_json(all_data, output)
+        repository = None
 
         if solr:
-            save_to_solr(all_data)
+            repository = SolrRepository(SOLR_URL)
+        elif output:
+            repository = JsonRepository(output)
+        else:
+            logger.error("Either --output or --solr must be specified.")
+            return
 
+        extract_subscriptions(youtube_api, oauth2_api, repository)
     except Exception as e:
         logger.error("An unexpected error occurred: %s", e)
 
