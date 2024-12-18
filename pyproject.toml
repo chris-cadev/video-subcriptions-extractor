@@ -18,7 +18,7 @@ license = {text = "MIT"}
 name = "channel-video-extractor"
 readme = "README.md"
 requires-python = ">=3.11"
-version = "0.1.0"
+version = "0.2.0"
 
 [build-system]
 build-backend = "pdm.backend"
@@ -26,7 +26,7 @@ requires = ["pdm-backend"]
 
 [project.scripts]
 yt_ch_extract = "channel_video_extractor.videos:cli"
-yt_ch_viewer = "channel_video_extractor.ui:app"
+yt_ch_searcher = "channel_video_extractor.ui:main"
 
 [tool.pdm]
 distribution = true

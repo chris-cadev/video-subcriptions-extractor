@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from typing import List, Optional
 import pysolr
 from dotenv import load_dotenv
+import uvicorn
 
 # Load environment variables
 load_dotenv()
@@ -176,3 +177,6 @@ def search(
     }
 
 
+
+def main():
+    uvicorn.run(app, host="0.0.0.0", port=8985)
