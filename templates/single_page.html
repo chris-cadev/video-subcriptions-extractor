@@ -46,9 +46,7 @@
                 const data = await response.json();
 
                 if (data.results.length > 0) {
-                    document.getElementById("results").innerHTML = `<ul>${data.results.map(
-                        result => `<li><pre>${JSON.stringify(result, null, 2)}</pre></li>`
-                    ).join("")}</ul>`;
+                    document.getElementById("results").innerHTML = createResultsHTML(data.results);
                 } else {
                     document.getElementById("results").innerHTML = "<p>No results found.</p>";
                 }
@@ -56,6 +54,21 @@
                 console.error("Error fetching search results:", error);
                 document.getElementById("results").innerHTML = "<p>Something went wrong. Please try again later.</p>";
             }
+        }
+
+        function createResultsHTML(results) {
+            return `
+                <div class="results-container">
+                    ${results.map(result => `
+                        <div class="result-card">
+                            <h3>${result.title || "No Title"}</h3>
+                            <p><strong>Description:</strong> ${result.description || "No Description"}</p>
+                            <p><strong>ID:</strong> ${result.id || "N/A"}</p>
+                            ${result.url ? `<a href="${result.url}" target="_blank">View More</a>` : ""}
+                        </div>
+                    `).join("")}
+                </div>
+            `;
         }
 
         window.onload = setupListeners;
@@ -66,7 +79,7 @@
         <h1>Search App</h1>
     </header>
     <main>
-        <div>
+        <div class="search-bar">
             <label for="query">Search Query:</label>
             <input type="text" id="query" placeholder="Start typing or press Enter to search..." />
 
