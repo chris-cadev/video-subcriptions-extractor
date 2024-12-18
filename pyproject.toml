@@ -1,0 +1,21 @@
+[project]
+authors = [
+  {name = "Christian Camacho", email = "chris.ca.dev@gmail.com"},
+]
+dependencies = ["yt-dlp>=2024.12.13", "click>=8.1.7"]
+description = "Default template for PDM package"
+license = {text = "MIT"}
+name = "channel-video-extractor"
+readme = "README.md"
+requires-python = ">=3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "pdm.backend"
+requires = ["pdm-backend"]
+
+[project.scripts]
+yt_ch_extract = "channel_video_extractor.main:cli"
+
+[tool.pdm]
+distribution = true
