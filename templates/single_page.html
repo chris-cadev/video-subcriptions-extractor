@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search App</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script>
+        let debounceTimeout;
+
+        function setupListeners() {
+            const queryInput = document.getElementById("query");
+            const sourceSelect = document.getElementById("source");
+
+            // Add event listener for Enter key
+            queryInput.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    performSearch();
+                }
+            });
+
+            // Add event listener for typing (debounce)
+            queryInput.addEventListener("input", () => {
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(() => {
+                    performSearch();
+                }, 2000);
+            });
+
+            // Add event listener for source change
+            sourceSelect.addEventListener("change", performSearch);
+        }
+
+        async function performSearch() {
+            const query = document.getElementById("query").value;
+            const source = document.getElementById("source").value;
+
+            if (query.trim() === "") {
+                document.getElementById("results").innerHTML = "<p>Please enter a search query.</p>";
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}&source=${source}`);
+                const data = await response.json();
+
+                if (data.results.length > 0) {
+                    document.getElementById("results").innerHTML = `<ul>${data.results.map(
+                        result => `<li><pre>${JSON.stringify(result, null, 2)}</pre></li>`
+                    ).join("")}</ul>`;
+                } else {
+                    document.getElementById("results").innerHTML = "<p>No results found.</p>";
+                }
+            } catch (error) {
+                console.error("Error fetching search results:", error);
+                document.getElementById("results").innerHTML = "<p>Something went wrong. Please try again later.</p>";
+            }
+        }
+
+        window.onload = setupListeners;
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Search App</h1>
+    </header>
+    <main>
+        <div>
+            <label for="query">Search Query:</label>
+            <input type="text" id="query" placeholder="Start typing or press Enter to search..." />
+
+            <label for="source">Source:</label>
+            <select id="source">
+                <option value="json">JSON</option>
+                <option value="solr">Solr</option>
+            </select>
+        </div>
+        <div id="results">
+            <p>Search results will appear here...</p>
+        </div>
+    </main>
+</body>
+</html>

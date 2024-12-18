@@ -40,12 +40,19 @@ class SolrRepository:
             raise RuntimeError("Solr is not configured.")
 
         try:
-            solr_query = f"{query}"
-            results = self.solr.search(solr_query, fl=",".join(fields) if fields else None)
+            # Default to '*' if no fields are provided
+            field_list = ",".join(fields) if fields else "*"
+            solr_query = f"title:{query}"  # Adjust to match your searchable field
+            logger.info("Executing Solr query: %s with fields: %s", solr_query, field_list)
+
+            # Execute Solr search
+            results = self.solr.search(solr_query, fl=field_list)
+            logger.info("Solr returned %d results.", len(results))
             return [doc for doc in results]
         except Exception as e:
             logger.error("Error searching Solr: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Solr search failed.")
+
 
 class JsonRepository:
     def __init__(self, filename):
@@ -68,19 +75,18 @@ class JsonRepository:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     """
-    Render the home page with a search bar.
+    Render the home page with the search bar.
     """
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("single_page.html", {"request": request})
 
-@app.get("/search")
+@app.get("/api/search")
 def search(
     query: str = Query(..., description="Search query"),
     source: str = Query("json", description="Data source: 'solr' or 'json'"),
-    fields: Optional[List[str]] = Query(None, description="Fields to include in results"),
-    request: Request = None
+    fields: Optional[List[str]] = Query(None, description="Fields to include in results")
 ):
     """
-    Search endpoint to query data from Solr or JSON file.
+    API endpoint to query data from Solr or JSON file.
 
     Parameters:
     - `query`: The search query.
@@ -101,6 +107,4 @@ def search(
         raise HTTPException(status_code=400, detail="Invalid source. Use 'solr' or 'json'.")
 
     results = repository.search(query, fields)
-    if request:
-        return templates.TemplateResponse("results.html", {"request": request, "results": results, "query": query})
     return {"results": results}
