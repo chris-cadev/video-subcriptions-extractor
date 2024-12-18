@@ -11,7 +11,6 @@ import googleapiclient.discovery
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 import yt_dlp
-import socket
 
 # Load environment variables
 load_dotenv()
