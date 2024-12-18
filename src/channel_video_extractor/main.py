@@ -43,13 +43,25 @@ class SolrRepository:
     def save(self, data):
         if self.solr:
             try:
-                self.solr.add(data)
-                logger.info("Data successfully saved to Solr.")
+                unique_data = self._deduplicate_solr(data)
+                if unique_data:
+                    self.solr.add(unique_data)
+                    logger.info("Data successfully saved to Solr.")
+                else:
+                    logger.info("No new data to save to Solr.")
             except Exception as e:
                 logger.error("Failed to save data to Solr: %s", e, exc_info=True)
         else:
             logger.error("Solr URL is not configured. Cannot save data.")
 
+    def _deduplicate_solr(self, data):
+        unique_data = []
+        for item in data:
+            query = f"id:{item['id']}"
+            results = self.solr.search(query)
+            if not results.docs:
+                unique_data.append(item)
+        return unique_data
 
 class JsonRepository:
     def __init__(self, filename):
@@ -57,16 +69,22 @@ class JsonRepository:
 
     def save(self, data):
         try:
+            existing_data = []
             if os.path.exists(self.filename):
                 with open(self.filename, "r") as f:
                     existing_data = json.load(f)
-            else:
-                existing_data = []
 
-            existing_data.extend(data)
-            with open(self.filename, "w") as f:
-                json.dump(existing_data, f, indent=2)
-            logger.info("Data successfully appended to %s.", self.filename)
+            existing_ids = {item['id'] for item in existing_data}
+            unique_data = [item for item in data if item['id'] not in existing_ids]
+
+            if unique_data:
+                existing_data.extend(unique_data)
+                with open(self.filename, "w") as f:
+                    json.dump(existing_data, f, indent=2)
+                logger.info("Data successfully appended to %s.", self.filename)
+            else:
+                logger.info("No new data to append to %s.", self.filename)
+
         except Exception as e:
             logger.error("Failed to append data to JSON file: %s", e, exc_info=True)
 
