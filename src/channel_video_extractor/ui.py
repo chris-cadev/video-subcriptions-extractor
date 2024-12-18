@@ -13,19 +13,16 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 logger = logging.getLogger("SearchAppLogger")
 
-# Constants
 SOLR_URL = os.getenv("SOLR_URL")
 JSON_FILE_PATH = os.getenv("JSON_FILE_PATH", "data.json")
 RESULTS_PER_PAGE = 10
 
-# FastAPI app
 app = FastAPI()
 
 # Static files and templates setup
@@ -46,7 +43,7 @@ class SolrRepository:
         Returns:
             str: The constructed Solr query string.
         """
-        searchable_fields = ["title", "description", "userEmail"]  # Example fields to search
+        searchable_fields = ["title", "description", "userEmail", "channelTitle"]
         return " OR ".join([f"{field}:{query}" for field in searchable_fields])
 
     def search(self, query: str, fields: Optional[List[str]] = None, start: int = 0):
@@ -65,13 +62,8 @@ class SolrRepository:
             raise RuntimeError("Solr is not configured.")
 
         try:
-            # Specify fields to return in the results, or default to all fields
             field_list = ",".join(fields) if fields else "*"
-            
-            # Build the Solr query
             solr_query = self._build_query(query)
-            
-            # Execute the query
             results = self.solr.search(solr_query, fl=field_list, start=start, rows=RESULTS_PER_PAGE)
             return [doc for doc in results]
         except Exception as e:
@@ -117,8 +109,6 @@ class JsonRepository:
                 {field: item[field] for field in fields} if fields else item
                 for item in data if query.lower() in json.dumps(item).lower()
             ]
-
-            # Pagination
             return results[start: start + RESULTS_PER_PAGE]
         except Exception as e:
             logger.error("Error searching JSON file: %s", e, exc_info=True)
