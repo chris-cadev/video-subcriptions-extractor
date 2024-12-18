@@ -218,6 +218,10 @@ def extract_videos(channel_url):
                     "description": entry.get("description"),
                     "view_count": entry.get("view_count"),
                     "duration": entry.get("duration"),
+                    "thumbnails": entry.get("thumbnails"),
+                    "release_timestamp": entry.get("release_timestamp"),
+                    "channel_is_verified": entry.get("channel_is_verified"),
+                    "live_status": entry.get("live_status"),
                 })
         logger.info("Extracted %d videos for channel: %s", len(videos), channel_url)
         return videos
