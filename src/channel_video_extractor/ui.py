@@ -36,13 +36,42 @@ class SolrRepository:
     def __init__(self, solr_url):
         self.solr = pysolr.Solr(solr_url, always_commit=True) if solr_url else None
 
+    def _build_query(self, query: str) -> str:
+        """
+        Build a Solr query string for the given query and predefined searchable fields.
+
+        Args:
+            query (str): The search query.
+
+        Returns:
+            str: The constructed Solr query string.
+        """
+        searchable_fields = ["title", "description", "userEmail"]  # Example fields to search
+        return " OR ".join([f"{field}:{query}" for field in searchable_fields])
+
     def search(self, query: str, fields: Optional[List[str]] = None, start: int = 0):
+        """
+        Search across the specified fields or default to all fields if not specified.
+
+        Args:
+            query (str): The search query.
+            fields (Optional[List[str]]): List of fields to return in the results.
+            start (int): Starting index for pagination.
+
+        Returns:
+            List[Dict]: A list of documents that match the query.
+        """
         if not self.solr:
             raise RuntimeError("Solr is not configured.")
 
         try:
+            # Specify fields to return in the results, or default to all fields
             field_list = ",".join(fields) if fields else "*"
-            solr_query = f"title:{query}"  # Adjust to match your searchable field
+            
+            # Build the Solr query
+            solr_query = self._build_query(query)
+            
+            # Execute the query
             results = self.solr.search(solr_query, fl=field_list, start=start, rows=RESULTS_PER_PAGE)
             return [doc for doc in results]
         except Exception as e:
@@ -50,17 +79,29 @@ class SolrRepository:
             raise HTTPException(status_code=500, detail="Solr search failed.")
 
     def get_total_results(self, query: str) -> int:
-        """Returns the total number of results for the query."""
+        """
+        Returns the total number of results for the query.
+
+        Args:
+            query (str): The search query.
+
+        Returns:
+            int: Total number of matching results.
+        """
         if not self.solr:
             raise RuntimeError("Solr is not configured.")
 
         try:
-            solr_query = f"title:{query}"
+            # Build the Solr query
+            solr_query = self._build_query(query)
+
+            # Fetch the total count of results
             results = self.solr.search(solr_query, rows=0)  # rows=0 to fetch only the count
             return results.hits
         except Exception as e:
             logger.error("Error fetching total results from Solr: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Solr total results count failed.")
+
 
 
 class JsonRepository:
